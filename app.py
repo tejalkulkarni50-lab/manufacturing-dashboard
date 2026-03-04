@@ -3,90 +3,92 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-st.set_page_config(page_title="Smart Manufacturing Dashboard", layout="wide")
+st.set_page_config(page_title="Dynamic Smart Analytics Dashboard", layout="wide")
 
-st.title("🏭 Smart Manufacturing Performance Dashboard")
+st.title("🏭 Dynamic Manufacturing Analytics Dashboard")
 
-file = st.file_uploader("Upload Manufacturing CSV", type=["csv"])
+file = st.file_uploader("Upload CSV File", type=["csv"])
 
 if file is not None:
+
     df = pd.read_csv(file)
 
-    # Date Conversion
-    if "Date" in df.columns:
-        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+    # Auto detect date columns
+    for col in df.columns:
+        try:
+            df[col] = pd.to_datetime(df[col])
+        except:
+            pass
 
-    # Sidebar Filters
-    st.sidebar.header("Filters")
+    st.sidebar.header("🔎 Dynamic Filters")
 
-    if "Machine_ID" in df.columns:
-        machine = st.sidebar.multiselect(
-            "Select Machine",
-            df["Machine_ID"].unique(),
-            default=df["Machine_ID"].unique()
-        )
-        df = df[df["Machine_ID"].isin(machine)]
+    # Dynamic Filters for categorical columns
+    categorical_cols = df.select_dtypes(include=["object"]).columns
+    for col in categorical_cols:
+        options = df[col].dropna().unique()
+        selected = st.sidebar.multiselect(f"Filter {col}", options, default=options)
+        df = df[df[col].isin(selected)]
 
-    if "Operation_Mode" in df.columns:
-        mode = st.sidebar.multiselect(
-            "Select Operation Mode",
-            df["Operation_Mode"].unique(),
-            default=df["Operation_Mode"].unique()
-        )
-        df = df[df["Operation_Mode"].isin(mode)]
+    st.sidebar.success("Filters Applied ✅")
 
-    # KPI Section
-    st.subheader("Key Performance Indicators")
+    # ---------------- KPIs ---------------- #
+    st.subheader("📌 Auto KPI Section")
 
-    k1, k2, k3, k4 = st.columns(4)
+    numeric_cols = df.select_dtypes(include=["number"]).columns
+    kpi_cols = st.columns(min(4, len(numeric_cols)))
 
-    k1.metric("Avg Temp (°C)", round(df["Temperature_C"].mean(), 2))
-    k2.metric("Avg Power (kW)", round(df["Power_Consumption_kW"].mean(), 2))
-    k3.metric("Avg Defect (%)", round(df["Quality_Control_Defect_Rate_%"].mean(), 2))
-    k4.metric("Avg Maintenance", round(df["Predictive_Maintenance_Score"].mean(), 2))
+    for i, col in enumerate(numeric_cols[:4]):
+        kpi_cols[i].metric(f"Avg {col}", round(df[col].mean(), 2))
 
-    st.markdown("---")
+    st.divider()
 
-    # Row 1 Charts
-    c1, c2 = st.columns(2)
+    # ---------------- AUTO DASHBOARDS ---------------- #
 
-    with c1:
-        st.markdown("### Production Speed Over Time")
-        if "Date" in df.columns:
-            fig1, ax1 = plt.subplots(figsize=(6,4))
-            ax1.plot(df["Date"], df["Production_Speed_units_per_hr"])
-            ax1.set_xlabel("Date")
-            ax1.set_ylabel("Production Speed")
-            st.pyplot(fig1)
+    tab1, tab2, tab3 = st.tabs([
+        "📈 Trend Analysis",
+        "📊 Distribution Analysis",
+        "🔍 Correlation & Data"
+    ])
 
-    with c2:
-        st.markdown("### Temperature vs Error Rate")
-        fig2, ax2 = plt.subplots(figsize=(6,4))
-        ax2.scatter(df["Temperature_C"], df["Error_Rate_%"])
-        ax2.set_xlabel("Temperature (°C)")
-        ax2.set_ylabel("Error Rate (%)")
+    # -------- TAB 1 (Date Trends) -------- #
+    with tab1:
+        date_cols = df.select_dtypes(include=["datetime64[ns]"]).columns
+        if len(date_cols) > 0 and len(numeric_cols) > 0:
+            selected_date = st.selectbox("Select Date Column", date_cols)
+            selected_numeric = st.selectbox("Select Numeric Column", numeric_cols)
+
+            fig, ax = plt.subplots(figsize=(7,4))   # Medium Size
+            ax.plot(df[selected_date], df[selected_numeric])
+            ax.set_xlabel(selected_date)
+            ax.set_ylabel(selected_numeric)
+            st.pyplot(fig)
+        else:
+            st.info("No Date Column Detected")
+
+    # -------- TAB 2 (Distribution) -------- #
+    with tab2:
+        selected_col = st.selectbox("Select Column for Distribution", df.columns)
+
+        fig2, ax2 = plt.subplots(figsize=(7,4))   # Medium Size
+
+        if selected_col in numeric_cols:
+            df[selected_col].hist(ax=ax2)
+        else:
+            df[selected_col].value_counts().plot(kind="bar", ax=ax2)
+
+        ax2.set_title(f"Distribution of {selected_col}")
         st.pyplot(fig2)
 
-    # Row 2 Charts
-    c3, c4 = st.columns(2)
-
-    with c3:
-        st.markdown("### Efficiency Status Distribution")
-        if "Efficiency_Status" in df.columns:
-            fig3, ax3 = plt.subplots(figsize=(6,4))
-            df["Efficiency_Status"].value_counts().plot(
-                kind="bar", ax=ax3
-            )
+    # -------- TAB 3 (Correlation + Data View) -------- #
+    with tab3:
+        if len(numeric_cols) > 1:
+            st.subheader("Correlation Heatmap")
+            fig3, ax3 = plt.subplots(figsize=(7,4))   # Medium Size
+            sns.heatmap(df[numeric_cols].corr(), cmap="coolwarm", annot=False, ax=ax3)
             st.pyplot(fig3)
 
-    with c4:
-        st.markdown("### Correlation Heatmap")
-        numeric_df = df.select_dtypes(include=["number"])
-        fig4, ax4 = plt.subplots(figsize=(6,4))
-        sns.heatmap(numeric_df.corr(), ax=ax4, cmap="coolwarm")
-        st.pyplot(fig4)
+        st.subheader("Filtered Dataset")
+        st.dataframe(df)
 
-    st.markdown("---")
-
-    st.subheader("Filtered Dataset Preview")
-    st.dataframe(df)
+        csv = df.to_csv(index=False).encode("utf-8")
+        st.download_button("⬇ Download Filtered Data", csv, "filtered_data.csv", "text/csv")
